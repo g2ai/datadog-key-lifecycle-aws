@@ -1,0 +1,11 @@
+# Runs gitleaks on staged changes before every commit.
+# Uses the locally installed gitleaks (8.30.1); no download or Go build.
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged changes)
+        entry: gitleaks git --pre-commit --staged --redact --verbose
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

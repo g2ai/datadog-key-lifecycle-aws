@@ -1,0 +1,11 @@
+# Custom gitleaks rules for this repo.
+# Keeps all built-in rules and adds one for Datadog API keys (32 hex),
+# because the built-in generic rule skips keys with low randomness.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "datadog-api-key"
+description = "Datadog API key (32 hex) in env files or datadog.yaml"
+regex = '''(?i)api_key\s*[:=]\s*['"]?([a-f0-9]{32})\b'''
+keywords = ["api_key"]

@@ -1,0 +1,52 @@
+# --- Secrets and credentials (never commit) ---
+.env
+.env.*
+!.env.example
+.aws/
+*.pem
+*.key
+credentials
+credentials.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Terraform ---
+# Keep .terraform.lock.hcl committed: it pins provider versions.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# --- Census output (masked, but generated per run) ---
+census-output/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+CLAUDE.md
