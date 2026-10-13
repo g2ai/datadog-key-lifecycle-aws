@@ -50,3 +50,7 @@ census-output/
 Thumbs.db
 .DS_Store
 CLAUDE.md
+
+# --- Packer ---
+packer_cache/
+packer/manifest-*.json
