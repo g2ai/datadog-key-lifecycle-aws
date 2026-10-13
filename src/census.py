@@ -8,10 +8,15 @@ classifies each finding:
   HIDDEN     AWS will not show the value (CloudFormation NoEcho). Check by hand.
 
 Never prints or stores a full key. Output shows the last 4 characters only.
-Exit code 1 when at least one COPY is found, so it can gate a pipeline.
+Exit codes: 0 clean, 1 at least one COPY found, 2 scan incomplete (errors, no COPY).
+An incomplete scan must never look clean.
+
+Two modes, one must be chosen:
+  --regions eu-west-1 us-east-1   daily / pre-rotation run on the regions in use
+  --all-regions                   weekly sweep, finds keys in regions nobody expects
 
 Usage:
-  python src/census.py --profile poc02 --role-arn arn:aws:iam::123456789012:role/poc-02-census-reader
+  python src/census.py --profile poc02 --role-arn arn:aws:iam::123456789012:role/poc-02-census-reader --all-regions
 """
 
 from __future__ import annotations
@@ -233,7 +238,9 @@ def main():
     ap = argparse.ArgumentParser(description="Find Datadog API key copies and references in AWS")
     ap.add_argument("--profile", required=True, help="AWS CLI profile used only to assume the role")
     ap.add_argument("--role-arn", required=True, help="census-reader role ARN")
-    ap.add_argument("--regions", nargs="*", help="limit to these regions (default: all enabled)")
+    mode = ap.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--regions", nargs="+", help="daily mode: scan only these regions")
+    mode.add_argument("--all-regions", action="store_true", help="sweep mode: scan every enabled region")
     ap.add_argument("--out-dir", default="census-output", help="where the JSON report goes")
     args = ap.parse_args()
 
@@ -243,7 +250,8 @@ def main():
     regions = args.regions or sorted(
         r["RegionName"] for r in session.client("ec2", region_name=home_region).describe_regions()["Regions"])
 
-    print(f"Census v0  account {account}  regions {len(regions)}", file=sys.stderr)
+    mode = "sweep" if args.all_regions else "daily"
+    print(f"Census v0  account {account}  mode {mode}  regions {len(regions)}", file=sys.stderr)
     findings, errors, secrets = [], [], 0
     with ThreadPoolExecutor(max_workers=8) as pool:
         for f, e, s in pool.map(lambda r: scan_region(creds, account, r), regions):
@@ -266,13 +274,15 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    report = {"account": account, "scanned_at": stamp, "regions": regions, "counts": counts,
+    report = {"account": account, "scanned_at": stamp, "mode": mode, "regions": regions, "counts": counts,
               "datadog_secrets": secrets, "errors": errors, "findings": [asdict(f) for f in findings]}
     path = out_dir / f"census-{account}-{stamp}.json"
     path.write_text(json.dumps(report, indent=2))
     print(f"Report: {path}", file=sys.stderr)
 
-    sys.exit(1 if counts[COPY] else 0)
+    if counts[COPY]:
+        sys.exit(1)
+    sys.exit(2 if errors else 0)
 
 
 if __name__ == "__main__":

@@ -50,6 +50,7 @@ data "aws_iam_policy_document" "census" {
       "ecs:ListTaskDefinitions",
       "ecs:DescribeTaskDefinition",
       "cloudformation:DescribeStacks",
+      "cloudformation:ListStacks", # DescribeStacks without a stack name is authorized as ListStacks
       "secretsmanager:ListSecrets",
     ]
     resources = ["*"]
