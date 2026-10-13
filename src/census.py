@@ -106,6 +106,25 @@ def scan_ssm(session, account, region):
             hits = [hit] if hit else classify_text(p["Value"])
             for cls, last4 in hits:
                 out.append(Finding(account, region, "ssm", p["Name"], f"value ({p['Type']})", cls, last4))
+            # Old versions keep old values. A key "migrated" to ENC[...] is still
+            # readable from history until it is rotated. Only key-like names are
+            # checked, to keep one extra API call per parameter to a minimum.
+            if KEY_NAME.search(p["Name"]):
+                out += scan_ssm_history(ssm, account, region, p["Name"], p["Version"])
+    return out
+
+
+def scan_ssm_history(ssm, account, region, name, current_version):
+    out = []
+    pages = ssm.get_paginator("get_parameter_history").paginate(Name=name, WithDecryption=True)
+    for page in pages:
+        for h in page["Parameters"]:
+            if h["Version"] == current_version:
+                continue
+            hit = classify_pair(name, h.get("Value"))
+            if hit and hit[0] == COPY:
+                out.append(Finding(account, region, "ssm", name,
+                                   f"history v{h['Version']} ({h['Type']})", COPY, hit[1]))
     return out
 
 

@@ -17,7 +17,7 @@ locals {
 }
 
 resource "random_id" "fake" {
-  for_each    = toset(["ssm_string", "ssm_secure", "lt_copy", "lambda_copy", "ecs_copy", "cfn_copy", "cfn_hidden", "ssm_second_region"])
+  for_each    = toset(["ssm_string", "ssm_secure", "lt_copy", "lambda_copy", "ecs_copy", "cfn_copy", "cfn_hidden", "ssm_second_region", "ssm_migrated"])
   byte_length = 16
 }
 

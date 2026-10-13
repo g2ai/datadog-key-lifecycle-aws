@@ -8,5 +8,6 @@ output "expected_copy_last4" {
     ecs_copy          = substr(local.fake["ecs_copy"], 28, 4)
     cfn_copy          = substr(local.fake["cfn_copy"], 28, 4)
     ssm_second_region = substr(local.fake["ssm_second_region"], 28, 4)
+    ssm_migrated      = substr(local.fake["ssm_migrated"], 28, 4)
   }
 }

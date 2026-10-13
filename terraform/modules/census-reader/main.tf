@@ -44,6 +44,7 @@ data "aws_iam_policy_document" "census" {
     actions = [
       "ssm:DescribeParameters",
       "ssm:GetParameters",
+      "ssm:GetParameterHistory",
       "ec2:DescribeLaunchTemplates",
       "ec2:DescribeLaunchTemplateVersions",
       "lambda:ListFunctions",

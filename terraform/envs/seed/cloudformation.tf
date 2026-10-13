@@ -25,4 +25,9 @@ resource "aws_cloudformation_stack" "hidden" {
   name          = "${local.prefix}-hidden"
   template_body = local.cfn_template.hidden
   parameters    = { DdApiKey = local.fake["cfn_hidden"] }
+
+  # AWS returns **** for NoEcho, so Terraform sees a change on every plan. Ignore it.
+  lifecycle {
+    ignore_changes = [parameters]
+  }
 }

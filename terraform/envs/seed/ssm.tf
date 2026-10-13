@@ -33,3 +33,17 @@ resource "aws_ssm_parameter" "decoy" {
   type  = "String"
   value = random_id.decoy.hex
 }
+
+# 13. Step 2.2: a parameter that is "migrated" from a copy to a reference.
+# Step 1: apply with app4_migrated = false (parameter holds the key).
+# Step 2: change to true and apply again (parameter now holds ENC[...]).
+# SSM keeps the old value in parameter history (up to 100 versions).
+locals {
+  app4_migrated = true
+}
+
+resource "aws_ssm_parameter" "migrated" {
+  name  = "/${local.prefix}/app4/dd_api_key"
+  type  = "SecureString"
+  value = local.app4_migrated ? "ENC[${local.ref_secret_arn}]" : local.fake["ssm_migrated"]
+}
