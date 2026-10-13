@@ -10,6 +10,11 @@ locals {
 module "census_reader" {
   source      = "../../modules/census-reader"
   name_prefix = "poc-02"
+
+  # IAM Identity Center roles in this account (both poc02 and poc02-ro permission sets).
+  trusted_principal_arns = [
+    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-reserved/sso.amazonaws.com/*/AWSReservedSSO_*",
+  ]
 }
 
 module "consumer_access" {
@@ -22,4 +27,8 @@ module "rotation" {
   name_prefix        = "poc-02"
   admin_secret_arn   = local.admin_secret_arn
   api_key_secret_arn = local.api_key_secret_arn
+}
+
+output "census_reader_role_arn" {
+  value = module.census_reader.role_arn
 }
