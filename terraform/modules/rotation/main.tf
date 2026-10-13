@@ -1,3 +1,59 @@
 # Module: rotation
-# Purpose: Secrets Manager rotation role scoped to the admin and API key secret ARNs (steps 1.5 and 0.5).
-# Skeleton only. Resources are added in later steps.
+# Purpose: Secrets Manager rotation role scoped to the admin and API key secret ARNs.
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_iam_role" "rotation" {
+  name = "${var.name_prefix}-datadog-rotation"
+
+  # Trust policy: WHO can use this role.
+  # Only Secrets Manager, only from this account, only for the API key secret.
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "secretsmanager.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+          ArnLike      = { "aws:SourceArn" = var.api_key_secret_arn }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "rotation" {
+  name = "${var.name_prefix}-datadog-rotation"
+  role = aws_iam_role.rotation.id
+
+  # Permission policy: WHAT this role can do.
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # Read and write the API key secret: this is the secret being rotated.
+        Sid    = "RotateApiKeySecret"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:UpdateSecretVersionStage"
+        ]
+        Resource = var.api_key_secret_arn
+      },
+      {
+        # Read only the admin secret: its credentials call the Datadog API, but it is never changed here.
+        Sid    = "ReadAdminKeySecret"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = var.admin_secret_arn
+      }
+    ]
+  })
+}
