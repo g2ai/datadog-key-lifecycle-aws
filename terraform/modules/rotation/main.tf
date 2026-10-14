@@ -57,3 +57,24 @@ resource "aws_iam_role_policy" "rotation" {
     ]
   })
 }
+
+# Managed external rotation: Secrets Manager calls the Datadog API itself, no Lambda.
+resource "aws_secretsmanager_secret_rotation" "api_key" {
+  secret_id                         = var.api_key_secret_arn
+  external_secret_rotation_role_arn = aws_iam_role.rotation.arn
+
+  external_secret_rotation_metadata {
+    key   = "adminSecretArn"
+    value = var.admin_secret_arn
+  }
+
+  rotation_rules {
+    schedule_expression = var.schedule_expression
+  }
+
+  # Apply must not create a Datadog key on its own. Rotations are triggered on purpose.
+  rotate_immediately = false
+
+  # The role policy must exist before Secrets Manager tries to use the role.
+  depends_on = [aws_iam_role_policy.rotation]
+}
