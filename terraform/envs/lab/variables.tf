@@ -61,3 +61,9 @@ variable "alert_email" {
   description = "Email for rotation alerts. Set in terraform.tfvars (git-ignored)."
   type        = string
 }
+
+variable "hosts_enabled" {
+  description = "Create the two Datadog test hosts (set false between sessions to stop EC2 + public IPv4 charges)"
+  type        = bool
+  default     = true
+}
