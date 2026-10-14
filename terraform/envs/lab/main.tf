@@ -43,3 +43,14 @@ output "census_reader_role_arn" {
 output "ec2_instance_profile_name" {
   value = module.consumer_access.ec2_instance_profile_name
 }
+
+module "rotation_alerts" {
+  source      = "../../modules/rotation-alerts"
+  name_prefix = "poc-02"
+  alert_email = var.alert_email
+}
+
+module "cloudtrail" {
+  source      = "../../modules/cloudtrail"
+  name_prefix = "poc-02"
+}

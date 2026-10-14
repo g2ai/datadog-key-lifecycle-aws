@@ -56,3 +56,8 @@ variable "dd_consumer_api_key_id" {
   type      = string
   ephemeral = true
 }
+
+variable "alert_email" {
+  description = "Email for rotation alerts. Set in terraform.tfvars (git-ignored)."
+  type        = string
+}
