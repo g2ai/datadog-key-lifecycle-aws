@@ -6,3 +6,7 @@ output "ec2_instance_profile_name" {
 output "api_key_secret_arn_pattern" {
   value = local.api_key_secret_arn_pattern
 }
+
+output "lambda_role_arn" {
+  value = aws_iam_role.lambda.arn
+}

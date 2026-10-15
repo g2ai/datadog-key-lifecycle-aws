@@ -51,3 +51,42 @@ resource "aws_iam_instance_profile" "ec2" {
   name = "${var.name_prefix}-dd-agent-ec2"
   role = aws_iam_role.ec2.name
 }
+
+# --- Lambda ---
+
+data "aws_iam_policy_document" "lambda_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "lambda" {
+  name               = "${var.name_prefix}-dd-lambda"
+  description        = "Lambda with Datadog extension: own logs + read the Datadog API key secret"
+  assume_role_policy = data.aws_iam_policy_document.lambda_trust.json
+}
+
+resource "aws_iam_role_policy" "lambda_read_api_key" {
+  name   = "read-datadog-api-key"
+  role   = aws_iam_role.lambda.id
+  policy = data.aws_iam_policy_document.read_api_key.json
+}
+
+data "aws_iam_policy_document" "lambda_logs" {
+  statement {
+    effect    = "Allow"
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.name_prefix}-*:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "lambda_logs" {
+  name   = "own-logs"
+  role   = aws_iam_role.lambda.id
+  policy = data.aws_iam_policy_document.lambda_logs.json
+}

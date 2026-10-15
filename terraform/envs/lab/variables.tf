@@ -67,3 +67,15 @@ variable "hosts_enabled" {
   type        = bool
   default     = true
 }
+
+variable "dd_extension_version" {
+  description = "Datadog Lambda extension layer version. Must be >= 99 to read the 'apiKey' field of a managed DatadogApiKey secret."
+  type        = number
+  default     = 101
+}
+
+variable "dd_secret_reload_seconds" {
+  description = "How often the extension re-reads the API key (seconds, extension v88+). Lab: short so rotation tests move fast."
+  type        = number
+  default     = 600
+}
