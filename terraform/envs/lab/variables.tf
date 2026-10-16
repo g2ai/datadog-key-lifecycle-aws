@@ -63,9 +63,27 @@ variable "alert_email" {
 }
 
 variable "hosts_enabled" {
-  description = "Create the two Datadog test hosts (set false between sessions to stop EC2 + public IPv4 charges)"
+  description = "Create the two Datadog test hosts and enable the Lambda tick. Default false: turn on per session with -var hosts_enabled=true"
   type        = bool
-  default     = true
+  default     = false
+}
+
+variable "ecs_enabled" {
+  description = "Run one Fargate task per ECS variant (A deploy-time, B runtime). Default false: turn on per session with -var ecs_enabled=true"
+  type        = bool
+  default     = false
+}
+
+variable "dd_agent_image" {
+  description = "Datadog Agent container image, pinned to the same version as the AMIs"
+  type        = string
+  default     = "public.ecr.aws/datadog/agent:7.83.1"
+}
+
+variable "ecs_secret_refresh_seconds" {
+  description = "ECS B: how often the Agent re-reads the API key secret (seconds). Lab: short so rotation tests move fast"
+  type        = number
+  default     = 600
 }
 
 variable "dd_extension_version" {
