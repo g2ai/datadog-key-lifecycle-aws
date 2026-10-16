@@ -57,6 +57,26 @@ variable "dd_consumer_api_key_id" {
   ephemeral = true
 }
 
+variable "dd_keycheck_app_key" {
+  description = "Datadog application key with ONLY the api_keys_read scope (safe-to-rotate check)"
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+}
+
+variable "keycheck_idle_minutes" {
+  description = "Safe-to-rotate: HOLD if the AWSPREVIOUS key was used within this many minutes. Datadog rounds date_last_used down to the hour, so keep it >= 120. Lab: 120 (prod: 1440)"
+  type        = number
+  default     = 120
+}
+
+variable "dd_monitors_app_key" {
+  description = "Datadog application key with ONLY monitors_read + monitors_write (Terraform datadog provider)"
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+}
+
 variable "alert_email" {
   description = "Email for rotation alerts. Set in terraform.tfvars (git-ignored)."
   type        = string

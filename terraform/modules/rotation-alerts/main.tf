@@ -44,7 +44,11 @@ resource "aws_cloudwatch_event_target" "sns" {
   }
 }
 
-# Only EventBridge, and only this rule, may publish to the topic.
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+# Only this EventBridge rule and this project's CloudWatch alarms may publish as a service.
+# (IAM roles in the account, such as the safe-to-rotate Lambda, publish with their own policy.)
 data "aws_iam_policy_document" "topic" {
   statement {
     sid       = "AllowRotationRuleOnly"
@@ -59,6 +63,22 @@ data "aws_iam_policy_document" "topic" {
       test     = "ArnEquals"
       variable = "aws:SourceArn"
       values   = [aws_cloudwatch_event_rule.rotation.arn]
+    }
+  }
+
+  statement {
+    sid       = "AllowProjectAlarmsOnly"
+    effect    = "Allow"
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.alerts.arn]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:cloudwatch:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:alarm:${var.name_prefix}-*"]
     }
   }
 }

@@ -54,3 +54,7 @@ CLAUDE.md
 # --- Packer ---
 packer_cache/
 packer/manifest-*
+
+# Lambda invoke payloads/results from manual tests
+**/dryrun.json
+**/out.json

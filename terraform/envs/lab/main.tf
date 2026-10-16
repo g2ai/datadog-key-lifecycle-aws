@@ -54,3 +54,15 @@ module "cloudtrail" {
   source      = "../../modules/cloudtrail"
   name_prefix = "poc-02"
 }
+
+# Step 3.4: rotate only when the key the rotation will revoke is no longer in use.
+module "safe_to_rotate" {
+  source             = "../../modules/safe-to-rotate"
+  name_prefix        = "poc-02"
+  api_key_secret_arn = module.datadog_secrets.api_key_secret_arn
+  alert_topic_arn    = module.rotation_alerts.topic_arn
+  idle_minutes       = var.keycheck_idle_minutes
+  # Lab: no automatic runs. Every check is a manual `aws lambda invoke`.
+  schedule_state = "DISABLED"
+  keycheck_app_key   = var.dd_keycheck_app_key
+}

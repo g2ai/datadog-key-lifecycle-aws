@@ -13,6 +13,8 @@ $checks = @{
   DD_SERVICE_ACCOUNT_ID  = $uuid
   DD_CONSUMER_API_KEY    = '^[a-f0-9]{32}$'
   DD_CONSUMER_API_KEY_ID = $uuid
+  DD_KEYCHECK_APP_KEY    = '^ddapp_'
+  DD_MONITORS_APP_KEY    = '^ddapp_'
 }
 
 $values = @{}
