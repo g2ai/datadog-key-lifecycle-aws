@@ -18,7 +18,8 @@ locals {
 
   ecs_variants = {
     a = {
-      task_role_arn = null # the Agent never calls AWS APIs itself
+      key_delivery  = "deploy-time" # the redeploy hook (3.3) acts on this tag
+      task_role_arn = null          # the Agent never calls AWS APIs itself
       secrets = [
         # Format: <secret ARN>:<json key>:<version stage>:<version id>. Empty = AWSCURRENT.
         { name = "DD_API_KEY", valueFrom = "${module.datadog_secrets.api_key_secret_arn}:apiKey::" },
@@ -28,6 +29,7 @@ locals {
       ]
     }
     b = {
+      key_delivery  = "runtime"
       task_role_arn = module.consumer_access.ecs_task_role_arn
       secrets       = []
       env = [
@@ -111,7 +113,19 @@ resource "aws_ecs_service" "dd" {
   }
 
   propagate_tags = "SERVICE"
-  tags           = { Variant = "ecs-${each.key}" }
+  tags = {
+    Variant            = "ecs-${each.key}"
+    DatadogKeyDelivery = each.value.key_delivery
+  }
+}
+
+# Step 3.3: redeploy deploy-time consumers when the key changes.
+module "redeploy_hook" {
+  source       = "../../modules/redeploy-hook"
+  name_prefix  = "poc-02"
+  cluster_name = aws_ecs_cluster.lab.name
+  cluster_arn  = aws_ecs_cluster.lab.arn
+  secret_name  = "poc-02/datadog-api-key"
 }
 
 output "ecs_services" {
