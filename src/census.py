@@ -1,15 +1,23 @@
-"""Census v0: find where Datadog API keys live in an AWS account.
+"""Census v1: find where Datadog API keys live in an AWS account.
 
-Read only. Assumes the census-reader role, scans every enabled region and
+Read only. Assumes the census-reader role, scans the chosen regions and
 classifies each finding:
 
-  COPY       the key value itself sits in the resource. Rotation breaks it.
-  REFERENCE  the resource points at a secret (ENC[...], secret ARN). Survives rotation.
-  HIDDEN     AWS will not show the value (CloudFormation NoEcho). Check by hand.
+  COPY         the key value itself sits in the resource. The second rotation breaks it.
+  DEPLOY-TIME  the resource points at the secret, but the value is read once, when it
+               starts (ECS task definition "secrets"). Survives only if it is redeployed
+               after each rotation (see the redeploy hook).
+  REFERENCE    the consumer reads the secret at runtime (ENC[...], secret ARN). Survives.
+  HIDDEN       AWS will not show the value (CloudFormation NoEcho). Check by hand.
+
+v1 adds DEPLOY-TIME and, with --datadog-status, a LIVE / not live status for every COPY:
+the last 4 characters are matched against the org's API keys (list endpoint, which never
+returns key values). Needs DD_API_KEY and DD_APP_KEY in the environment; the app key
+only needs the api_keys_read scope. The census role itself still cannot read secrets.
 
 Never prints or stores a full key. Output shows the last 4 characters only.
-Exit codes: 0 clean, 1 at least one COPY found, 2 scan incomplete (errors, no COPY).
-An incomplete scan must never look clean.
+Exit codes: 0 clean, 1 at least one COPY found (with --datadog-status: at least one
+LIVE copy), 2 scan incomplete (errors, nothing else). An incomplete scan must never look clean.
 
 Two modes, one must be chosen:
   --regions eu-west-1 us-east-1   daily / pre-rotation run on the regions in use
@@ -25,8 +33,11 @@ import argparse
 import base64
 import gzip
 import json
+import os
 import re
 import sys
+import urllib.parse
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -47,7 +58,7 @@ KEY_NAME = re.compile(r"(?i)api[_-]?key")
 KEY_VALUE = re.compile(r"^[a-f0-9]{32}$")
 REF_VALUE = re.compile(r"ENC\[|arn:aws:secretsmanager:|arn:aws:ssm:")
 
-COPY, REFERENCE, HIDDEN = "COPY", "REFERENCE", "HIDDEN"
+COPY, DEPLOY_TIME, REFERENCE, HIDDEN = "COPY", "DEPLOY-TIME", "REFERENCE", "HIDDEN"
 
 BOTO_CONFIG = Config(retries={"max_attempts": 8, "mode": "adaptive"})
 
@@ -61,6 +72,7 @@ class Finding:
     field: str
     cls: str
     last4: str
+    dd_status: str = ""
 
 
 def classify_pair(name: str, value: str | None) -> tuple[str, str] | None:
@@ -179,8 +191,10 @@ def scan_ecs(session, account, region):
                                            f"{c['name']} environment {env['name']}", *hit))
                 for sec in c.get("secrets", []):
                     if KEY_NAME.search(sec.get("name", "")):
+                        # ECS injects "secrets" once, at task start: a reference on paper,
+                        # a copy in practice until the task is replaced.
                         out.append(Finding(account, region, "ecs-task-def", label,
-                                           f"{c['name']} secrets {sec['name']}", REFERENCE, "----"))
+                                           f"{c['name']} secrets {sec['name']}", DEPLOY_TIME, "----"))
     return out
 
 
@@ -241,9 +255,40 @@ def assume(profile, role_arn):
     }, base.region_name or "eu-west-1"
 
 
+def datadog_status(findings, site):
+    """Mark each COPY as LIVE (matches an active org API key) or not live. Values never leave AWS."""
+    api_key, app_key = os.environ.get("DD_API_KEY"), os.environ.get("DD_APP_KEY")
+    if not api_key or not app_key:
+        raise SystemExit("--datadog-status needs DD_API_KEY and DD_APP_KEY (api_keys_read) in the environment")
+    by_last4, page = {}, 0
+    while True:
+        query = urllib.parse.urlencode({"page[size]": 100, "page[number]": page})
+        req = urllib.request.Request(f"https://api.{site}/api/v2/api_keys?{query}",
+                                     headers={"DD-API-KEY": api_key, "DD-APPLICATION-KEY": app_key})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.load(r)["data"]
+        for k in data:
+            a = k["attributes"]
+            by_last4.setdefault(a.get("last4"), []).append(a)
+        if len(data) < 100:
+            break
+        page += 1
+    for f in findings:
+        if f.cls != COPY:
+            continue
+        hits = by_last4.get(f.last4, [])
+        if not hits:
+            f.dd_status = "not live"
+        elif len(hits) == 1:
+            used = (hits[0].get("date_last_used") or "never")[:16]
+            f.dd_status = f"LIVE (used {used})"
+        else:
+            f.dd_status = f"LIVE? {len(hits)} keys share last4"
+
+
 def print_table(findings):
-    cols = ["account", "region", "service", "resource", "field", "cls", "last4"]
-    heads = ["ACCOUNT", "REGION", "SERVICE", "RESOURCE", "FIELD", "CLASS", "LAST4"]
+    cols = ["account", "region", "service", "resource", "field", "cls", "last4", "dd_status"]
+    heads = ["ACCOUNT", "REGION", "SERVICE", "RESOURCE", "FIELD", "CLASS", "LAST4", "DATADOG"]
     rows = [[str(getattr(f, c)) for c in cols] for f in findings]
     widths = [max([len(h)] + [len(r[i]) for r in rows]) for i, h in enumerate(heads)]
     line = "  ".join(h.ljust(w) for h, w in zip(heads, widths))
@@ -261,6 +306,9 @@ def main():
     mode.add_argument("--regions", nargs="+", help="daily mode: scan only these regions")
     mode.add_argument("--all-regions", action="store_true", help="sweep mode: scan every enabled region")
     ap.add_argument("--out-dir", default="census-output", help="where the JSON report goes")
+    ap.add_argument("--datadog-status", action="store_true",
+                    help="mark each COPY as LIVE / not live in Datadog (needs DD_API_KEY, DD_APP_KEY)")
+    ap.add_argument("--dd-site", default="datadoghq.eu")
     args = ap.parse_args()
 
     creds, home_region = assume(args.profile, args.role_arn)
@@ -270,7 +318,7 @@ def main():
         r["RegionName"] for r in session.client("ec2", region_name=home_region).describe_regions()["Regions"])
 
     mode = "sweep" if args.all_regions else "daily"
-    print(f"Census v0  account {account}  mode {mode}  regions {len(regions)}", file=sys.stderr)
+    print(f"Census v1  account {account}  mode {mode}  regions {len(regions)}", file=sys.stderr)
     findings, errors, secrets = [], [], 0
     with ThreadPoolExecutor(max_workers=8) as pool:
         for f, e, s in pool.map(lambda r: scan_region(creds, account, r), regions):
@@ -278,12 +326,19 @@ def main():
             errors += e
             secrets += s
 
-    order = {COPY: 0, HIDDEN: 1, REFERENCE: 2}
+    if args.datadog_status:
+        datadog_status(findings, args.dd_site)
+
+    order = {COPY: 0, DEPLOY_TIME: 1, HIDDEN: 2, REFERENCE: 3}
     findings.sort(key=lambda f: (order[f.cls], f.region, f.service, f.resource))
     print_table(findings)
 
-    counts = {k: sum(1 for f in findings if f.cls == k) for k in (COPY, REFERENCE, HIDDEN)}
-    print(f"\nSummary: {counts[COPY]} COPY, {counts[REFERENCE]} REFERENCE, {counts[HIDDEN]} HIDDEN")
+    counts = {k: sum(1 for f in findings if f.cls == k) for k in (COPY, DEPLOY_TIME, REFERENCE, HIDDEN)}
+    live = sum(1 for f in findings if f.dd_status.startswith("LIVE"))
+    print(f"\nSummary: {counts[COPY]} COPY, {counts[DEPLOY_TIME]} DEPLOY-TIME, "
+          f"{counts[REFERENCE]} REFERENCE, {counts[HIDDEN]} HIDDEN")
+    if args.datadog_status:
+        print(f"Datadog: {live} of {counts[COPY]} COPY findings match a live API key")
     print(f"Secrets Manager: {secrets} secret(s) with 'datadog' in the name (values not read)")
     if errors:
         print(f"\n{len(errors)} scan error(s):", file=sys.stderr)
@@ -294,12 +349,14 @@ def main():
     out_dir.mkdir(exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     report = {"account": account, "scanned_at": stamp, "mode": mode, "regions": regions, "counts": counts,
+              "datadog_status": bool(args.datadog_status), "live_copies": live,
               "datadog_secrets": secrets, "errors": errors, "findings": [asdict(f) for f in findings]}
     path = out_dir / f"census-{account}-{stamp}.json"
     path.write_text(json.dumps(report, indent=2))
     print(f"Report: {path}", file=sys.stderr)
 
-    if counts[COPY]:
+    failing = live if args.datadog_status else counts[COPY]
+    if failing:
         sys.exit(1)
     sys.exit(2 if errors else 0)
 
