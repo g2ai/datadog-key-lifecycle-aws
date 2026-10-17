@@ -278,7 +278,39 @@ Then deregister the AMIs and delete their snapshots, revoke the Datadog keys and
 
 ## Screenshots
 
-Added in the documentation phase.
+Account IDs, ARNs and email addresses are masked.
+
+**Find.** Census sweep over a seeded account: 7 copies of a key, 4 references, 1 hidden value.
+
+![Census table](docs/images/01-census-find-copies.png)
+
+**ECS A after the key was revoked.** ECS reports the service as running while the Agent logs `API Key invalid (403)` and drops every payload.
+
+![ECS A running but 403](docs/images/02-ecs-a-running-but-403.png)
+
+**ECS A gap and recovery.** No data from ECS A after the revoke; data returns after a forced redeployment. ECS B carries on.
+
+![ECS A gap then redeploy](docs/images/03-ecs-a-gap-then-redeploy.png)
+
+**Redeploy hook.** Each AWSCURRENT change redeploys the service tagged deploy-time (ECS A) and skips the runtime reader (ECS B).
+
+![Redeploy hook log](docs/images/04-redeploy-hook-log.png)
+
+**ECS B.** One 403, then the Agent refreshes the secret and continues.
+
+![ECS B refresh after 403](docs/images/05-ecs-b-refresh-after-403.png)
+
+**Safe-to-rotate holds.** The key about to be revoked was used 14 minutes ago, and in a second case a previous rotation was unfinished.
+
+![Hold: stale consumer](docs/images/06-hold-stale-consumer.png)
+
+![Hold: AWSPENDING](docs/images/07-hold-awspending.png)
+
+**Detection from both sides.** CloudWatch alarm on `API Key invalid` and the Datadog no-data monitor.
+
+![CloudWatch alarm](docs/images/08-cloudwatch-alarm.png)
+
+![Datadog no-data monitor](docs/images/09-datadog-no-data-monitor.png)
 
 ## What I learned
 
