@@ -312,10 +312,6 @@ Account IDs, ARNs and email addresses are masked.
 
 ![Datadog no-data monitor](docs/images/09-datadog-no-data-monitor.png)
 
-## What I learned
-
-Written in the documentation phase.
-
 ## Limitations
 
 - One account and one region for the lab. The multi-account design is in [docs/scale.md](docs/scale.md) and is not built.
