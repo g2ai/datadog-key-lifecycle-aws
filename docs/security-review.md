@@ -43,8 +43,19 @@ accepts service publishes only from the project's EventBridge rule and alarms.
 | Admin secret is not rotated | Long-lived credential | Rotate the service account app key on its own schedule |
 | One ECS execution role for both variants | Runtime variant's execution role can read the secret it does not need | Separate execution roles |
 | Safe-to-rotate uses the current API key for its Datadog call | Key value in Lambda memory | Dedicated low-value API key for checks |
-| Packer leaves its temporary public key in `~/.ssh/authorized_keys` | Low (private key deleted, no port 22) | `ssh_clear_authorized_keys = true` |
-| Base AMI not pinned | Two builds can differ | Pin `source_ami` |
-| `/api/v1/validate` calls update "last used" | Breaks the safe-to-rotate signal | Never validate old keys; check scripts are lab-only |
+| Packer left its temporary public key in `~/.ssh/authorized_keys` | Low (private key deleted, no port 22) | Fixed: `ssh_clear_authorized_keys = true`; verified on a host from the rebuilt image |
+| Base AMI was not pinned | Two builds can differ | Fixed: `source_ami` pinned in `packer/base-ami.auto.pkrvars.hcl`, looked up from the AWS public SSM parameter |
+| Calls made with a key can update its "last used" (seen in the UI after `/api/v1/validate`; a later check did not show it within minutes, so timing is unclear) | Breaks the safe-to-rotate signal | Never call Datadog with the old key; check scripts are lab-only |
 | Census is name-based and cannot see inside images | Missed copies | Safe-to-rotate check as the second line |
 | CLI changes to resources Terraform does not track (rule state) are not detected | Silent drift | Set every attribute that matters explicitly (`state = "ENABLED"`) |
+| Datadog no-data monitor email was not delivered in the lab | Outage seen in Datadog but nobody told | CloudWatch alarm is the primary alert; test monitor notifications after setup |
+| A static API key on every host is the root of the problem | Copies spread | Datadog Workload Identity Federation (see below), not built |
+
+## 5. Next step: no static key on hosts (not built)
+
+Datadog Workload Identity Federation lets the Agent (7.83 and later, on EC2 using IMDS) prove
+its AWS identity to Datadog and receive a managed API key that Datadog rotates itself. The
+static key stays only as a fallback. It needs the Datadog AWS integration and an intake mapping
+in the Datadog org. This would remove most of the copies the census looks for, but it does not
+cover every consumer type, so the census and the rotation flow in this repo are still needed.
+Check the current Datadog docs for status and supported platforms before relying on it.

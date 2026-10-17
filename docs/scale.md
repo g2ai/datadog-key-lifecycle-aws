@@ -36,8 +36,12 @@ application key permissions rotation needs, not the Datadog Admin Role used in t
   Datadog rounds `date_last_used` down to the hour, so the idle limit must be well above one
   hour (prod: 1440 minutes).
 - The managed rotation schedule (`rate(90 days)`) stays as a backstop: a hold cannot last forever.
-- The check must never call Datadog with the old key. Any API call with a key updates its
-  "last used" time, which turns every check into a hold.
+- The check must never call Datadog with the old key. A call made with a key can update its
+  "last used" time, which would turn every check into a hold.
+- The check also holds while any version carries `AWSPENDING`. The lab saw `AWSPENDING` left on
+  the current version twice: after repeated `rotate-secret` calls, and after a failed rotation
+  that AWS retried and completed once the fault was fixed. Alert on the hold, check both keys,
+  then remove the label with `update-secret-version-stage --remove-from-version-id`.
 
 ## 4. Consumers: one rule
 
@@ -79,6 +83,9 @@ default bus without a CloudTrail trail. The rotation alerts use CloudTrail-deriv
 - **Datadog side:** no-data monitors per host group or ECS task family.
 - ECS reports a task as running while its Agent drops every payload. Service health is not
   monitoring health.
+- In the lab the CloudWatch alarm fired in about 2 minutes and the Datadog no-data monitor
+  detected the gap in about 10. The monitor's email was not delivered, so send a test
+  notification from every new monitor before trusting it.
 
 ## 7. Cost per account [ESTIMATE]
 
@@ -90,3 +97,13 @@ default bus without a CloudTrail trail. The rotation alerts use CloudTrail-deriv
 | Organization trail | first copy of management events free; S3 storage extra |
 
 For 100 accounts: roughly $80 to $120 per month, driven by secret count and refresh calls.
+
+## 8. Not built: next steps
+
+- **Cross-account wiring:** census role in every account trusted by a security account, and a
+  central admin secret shared by resource policy (sections 2 and 5).
+- **Custom Datadog role** for the rotation service account instead of the Admin Role.
+- **Workload Identity Federation** for Agents on EC2, so hosts carry no static key
+  (see [security review](security-review.md)).
+- **Remote Terraform state** and a configurable name prefix, so more than one copy of the
+  lab can run in one account.
