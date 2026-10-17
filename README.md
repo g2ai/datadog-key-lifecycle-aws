@@ -72,7 +72,7 @@ Tools (versions used in the lab; Windows PowerShell 5.1):
 | Terraform | 1.15 or later (providers: aws `~> 6.68`, datadog `~> 4.25`, archive `~> 2.8`) |
 | Packer | 1.16 or later (amazon plugin `~> 1.8`) |
 | AWS CLI | v2, with IAM Identity Center (SSO) |
-| Python | 3.12 with `boto3` from `requirements.txt` |
+| Python | 3.13 (python.org installer, `python` on PATH), `boto3` from `requirements.txt` in a virtual environment |
 | gitleaks | 8.30.1 (pre-commit hook) |
 
 Accounts:
@@ -103,14 +103,16 @@ Set an AWS budget alert before you start. Run the teardown at the end.
 
 ## Quickstart
 
-All commands are PowerShell. Run them from the repo root unless a step says otherwise.
+All commands are PowerShell. Run them from the repo root unless a step says otherwise. In a new PowerShell window, activate the virtual environment again (`.\.venv\Scripts\Activate.ps1`) and reload the Datadog values (step 3).
 
 ### 1. Clone and install
 
 ```powershell
 git clone https://github.com/g2ai/datadog-key-lifecycle-aws.git
 cd datadog-key-lifecycle-aws
-py -3.12 -m pip install -r requirements.txt
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
 ### 2. Sign in to AWS
@@ -179,10 +181,10 @@ terraform apply -var aws_profile=poc02 -var hosts_enabled=true -var ecs_enabled=
 ```powershell
 cd ..\..\..
 $role = terraform -chdir=terraform\envs\lab output -raw census_reader_role_arn
-py -3.12 src\census.py --profile poc02-ro --role-arn $role --regions eu-west-1 us-east-1
+python src\census.py --profile poc02 --role-arn $role --regions eu-west-1 us-east-1
 ```
 
-Add `--datadog-status` to mark each copy LIVE or not live (needs `DD_API_KEY` and `DD_APP_KEY` with `api_keys_read` in the environment). The report goes to `census-output\`.
+The `poc02` profile is used only to assume the census role, which is read-only. The `ReadOnlyAccess` permission set cannot call `sts:AssumeRole`. Add `--datadog-status` to mark each copy LIVE or not live (needs `DD_API_KEY` and `DD_APP_KEY` with `api_keys_read` in the environment). The report goes to `census-output\`.
 
 ### 8. Check before rotating (dry run)
 
