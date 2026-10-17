@@ -102,6 +102,8 @@ resource "aws_lambda_function" "fn" {
 resource "aws_cloudwatch_event_rule" "key_changed" {
   name        = "${var.name_prefix}-redeploy-on-key-change"
   description = "AWSCURRENT moved on ${var.secret_name}: redeploy deploy-time consumers"
+  # Explicit, so Terraform notices if someone disables the rule by hand (seen in the lab).
+  state = "ENABLED"
 
   event_pattern = jsonencode({
     source        = ["aws.secretsmanager"]

@@ -71,8 +71,23 @@ def alert(subject, text):
     sns.publish(TopicArn=TOPIC_ARN, Subject=subject[:99], Message=text)
 
 
+def pending_rotation():
+    """True if a version still carries AWSPENDING: the last rotation did not finish.
+    Rotating again would fail ("A previous rotation isn't complete") or stack up."""
+    ids = sm.list_secret_version_ids(SecretId=SECRET_ID)["Versions"]
+    return any("AWSPENDING" in v.get("VersionStages", []) for v in ids)
+
+
 def handler(event, context):
     dry_run = bool((event or {}).get("dry_run", False))
+
+    if pending_rotation():
+        reason = "a previous rotation is not complete (AWSPENDING still set)"
+        log("decision", decision="HOLD", reason=reason, dry_run=dry_run)
+        alert("poc-02 key rotation HELD",
+              f"Rotation of {SECRET_ID} was NOT started: {reason}.\n"
+              "Check the RotationFailed alert and the secret's version stages before rotating again.")
+        return {"decision": "HOLD", "reason": reason, "dry_run": dry_run}
 
     previous = secret_json("AWSPREVIOUS")
     current = secret_json("AWSCURRENT")

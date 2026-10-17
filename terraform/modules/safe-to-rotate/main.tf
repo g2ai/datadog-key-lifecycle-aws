@@ -63,6 +63,11 @@ data "aws_iam_policy_document" "fn" {
     resources = [var.api_key_secret_arn, aws_secretsmanager_secret.keycheck_app_key.arn]
   }
   statement {
+    sid       = "SeeUnfinishedRotations"
+    actions   = ["secretsmanager:ListSecretVersionIds"]
+    resources = [var.api_key_secret_arn]
+  }
+  statement {
     sid       = "RotateOnlyTheApiKeySecret"
     actions   = ["secretsmanager:RotateSecret"]
     resources = [var.api_key_secret_arn]
