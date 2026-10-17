@@ -37,6 +37,11 @@ variable "secret_name" {
   default     = "poc-02/datadog-api-key"
 }
 
+variable "source_ami" {
+  description = "Pinned base AMI (Amazon Linux 2023). Set in base-ami.auto.pkrvars.hcl and change it on purpose, so two builds never differ by accident."
+  type        = string
+}
+
 variable "dd_api_key" {
   description = "Only for the baked build. Pass through PKR_VAR_dd_api_key, never in a file."
   type        = string
@@ -58,15 +63,9 @@ source "amazon-ebs" "al2023" {
   region        = var.region
   instance_type = "t3.micro"
 
-  source_ami_filter {
-    filters = {
-      name                = "al2023-ami-2023.*-kernel-*-x86_64"
-      virtualization-type = "hvm"
-      root-device-type    = "ebs"
-    }
-    owners      = ["amazon"]
-    most_recent = true
-  }
+  # Pinned, not "most_recent": the ref and baked builds once got different base AMIs.
+  # Find the current one: aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  source_ami = var.source_ami
 
   # Lab VPC public subnet. Packer opens SSH only to this laptop's public IP.
   subnet_filter {
@@ -76,6 +75,8 @@ source "amazon-ebs" "al2023" {
   temporary_security_group_source_public_ip = true
 
   ssh_username = "ec2-user"
+  # Remove Packer's temporary public key from authorized_keys before the image is made.
+  ssh_clear_authorized_keys = true
 
   run_tags        = local.tags
   run_volume_tags = local.tags
