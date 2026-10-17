@@ -24,7 +24,7 @@ Other findings:
 
 - Datadog cannot see a rejected key. A CloudWatch Logs metric filter on `API Key invalid` alarmed in about 2 minutes; the Datadog no-data monitor needed about 10.
 - Datadog reports `date_last_used` rounded down to the hour, so "idle" checks need a margin (120 minutes in the lab).
-- Repeated `rotate-secret` calls can leave `AWSPENDING` stuck. The safe-to-rotate check holds while any version carries `AWSPENDING`.
+- `AWSPENDING` can be left on the current version, after repeated `rotate-secret` calls or after a failed rotation that AWS retried. The safe-to-rotate check holds while any version carries `AWSPENDING`.
 
 ## Architecture
 
@@ -50,6 +50,56 @@ flowchart LR
 ```
 
 Docs: [scale design](docs/scale.md), [security review](docs/security-review.md).
+
+## How it works
+
+**Census: find the copies first.** `src/census.py` scans an account region by region and sorts every place it finds a Datadog key into four classes:
+
+| Class | Meaning | After rotation |
+|---|---|---|
+| COPY | The key value itself sits in the resource (SSM parameter, Lambda env var, launch template user data) | Breaks when that key is revoked |
+| DEPLOY-TIME | The resource points at the secret but reads it once, at start (ECS task definition `secrets`) | Survives only if redeployed after each rotation |
+| REFERENCE | The consumer reads the secret at runtime (`ENC[...]`, secret ARN) | Survives |
+| HIDDEN | AWS will not show the value (CloudFormation NoEcho) | Check by hand |
+
+The scan runs through a read-only role that cannot read secret values, and it prints only the last 4 characters of a key.
+
+**Managed rotation.** Two secrets: the admin secret holds the service account credentials that Secrets Manager uses to call Datadog, and the API key secret holds the key every consumer reads. On each rotation Datadog creates a new key, AWSCURRENT moves to it, the old current key becomes AWSPREVIOUS and stays valid, and the key from two rotations back is revoked. No rotation Lambda is involved.
+
+**Safe-to-rotate.** Before a rotation, a Lambda checks the key that the next rotation will revoke (AWSPREVIOUS). It holds the rotation and sends an email if a previous rotation is unfinished (AWSPENDING set) or if that key was used within the idle limit. It runs every 45 days; the AWS schedule of 90 days stays as a backstop, so a hold cannot last forever.
+
+**Redeploy hook.** When AWSCURRENT moves, Secrets Manager emits the native EventBridge event "Secret Label Updated" (no CloudTrail trail needed). A Lambda force-deploys the ECS services in the cluster tagged `DatadogKeyDelivery=deploy-time`, so their new tasks start with the new key long before the old key is revoked.
+
+**Monitoring from both sides.** A CloudWatch Logs metric filter on `API Key invalid` in the Agent logs drives an alarm that sees the cause. A Datadog no-data monitor sees the effect: data that stopped arriving.
+
+## FAQ
+
+**Census only shows the last 4 characters. How does it know a copy is still live?**
+With `--datadog-status` it reads the org's API key list, which returns each key's last 4 characters and metadata but never the key value. A copy whose last 4 match an active key is LIVE. A copy with no match was already revoked and is cleanup, not an outage risk.
+
+**Which key does a rotation revoke?**
+The one from two rotations back. After rotation N, AWSCURRENT holds key N, AWSPREVIOUS holds key N-1 (still valid), and key N-2 is revoked. Every consumer gets one full rotation period to pick up the new key.
+
+**Why does the safe-to-rotate check not call Datadog with the old key?**
+Any call made with a key can count as use of that key. Calling with AWSPREVIOUS to ask whether AWSPREVIOUS is idle would make it look busy. The check calls the key list endpoint with the current key and an application key that has only `api_keys_read`.
+
+**Why is the idle limit 120 minutes in the lab?**
+Datadog reports `date_last_used` rounded down to the hour. A key used at 10:59 shows 10:00, so a limit under an hour can misjudge. Production uses 1440 minutes (one day).
+
+**ECS shows the task as running. What is wrong?**
+ECS only knows the container process is alive. With task definition `secrets`, the key is injected once when the task starts, so a running task keeps the old key after a rotation. Once that key is revoked, the Agent gets 403 from Datadog and drops data while ECS still reports `running`. The redeploy hook starts new tasks right after each rotation, so this never happens.
+
+**Why does ECS B survive without the hook?**
+Its Agent reads the key at runtime through its secrets backend and refreshes it on a timer. When Datadog returns 403, the Agent refreshes the secret immediately and continues with the new key. In the lab this took under a second.
+
+**Why both a CloudWatch alarm and a Datadog monitor?**
+Datadog cannot see data it rejected; it only notices that data stopped. The Agent log on the AWS side shows the cause, the 403. In the lab the CloudWatch alarm fired in about 2 minutes and the Datadog no-data monitor detected the gap in about 10. They also cover each other: the log alarm misses an Agent that stops without logging, and the no-data monitor says data stopped but not why.
+
+**Why not rebuild the AMI-baked image after each rotation?**
+That would copy a live key into an image again, and every launch from that image carries it. The fix is a key-free image (AMI-ref) that reads the secret at runtime.
+
+**What if a rotation fails?**
+Secrets Manager retries it. In the lab, a rotation broken on purpose (rotation role policy removed) completed on a retry after the policy was restored, and left AWSPENDING on the new current version. The safe-to-rotate check held the next rotation until the label was removed with `aws secretsmanager update-secret-version-stage --remove-from-version-id`.
 
 ## Repo layout
 
