@@ -2,7 +2,9 @@
 # Only the AMI-ref host gets the instance profile: the AMI-baked host carries its key in the image.
 # Turn off between test sessions:  terraform apply -var hosts_enabled=false
 
+# Looked up only when hosts are on, so plan works before any AMI exists.
 data "aws_ami" "dd_ref" {
+  count       = var.hosts_enabled ? 1 : 0
   owners      = ["self"]
   most_recent = true
   filter {
@@ -12,6 +14,7 @@ data "aws_ami" "dd_ref" {
 }
 
 data "aws_ami" "dd_baked" {
+  count       = var.hosts_enabled ? 1 : 0
   owners      = ["self"]
   most_recent = true
   filter {
@@ -47,8 +50,8 @@ resource "aws_security_group" "hosts" {
 
 locals {
   hosts = var.hosts_enabled ? {
-    ref   = { ami = data.aws_ami.dd_ref.id, profile = module.consumer_access.ec2_instance_profile_name }
-    baked = { ami = data.aws_ami.dd_baked.id, profile = null }
+    ref   = { ami = one(data.aws_ami.dd_ref[*].id), profile = module.consumer_access.ec2_instance_profile_name }
+    baked = { ami = one(data.aws_ami.dd_baked[*].id), profile = null }
   } : {}
 }
 
