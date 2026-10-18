@@ -8,6 +8,10 @@ Rotating a Datadog API key is one API call. The hard part is everything that sti
 
 Status: lab build complete. Tested on Datadog EU (`datadoghq.eu`), AWS `eu-west-1`.
 
+![Key lifecycle flow](docs/images/lifecycle_flow.png)
+
+Source: [docs/lifecycle-flow.drawio](docs/lifecycle-flow.drawio).
+
 ## What the lab showed
 
 Each consumer was tested across real rotations. Results from the lab:
