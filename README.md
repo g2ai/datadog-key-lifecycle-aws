@@ -49,6 +49,12 @@ flowchart LR
   DDAPI[Datadog API<br/>datadoghq.eu]
 ```
 
+Detailed diagram with AWS icons:
+
+![Architecture](docs/images/architecture.png)
+
+Source: [docs/architecture.drawio](docs/architecture.drawio) (open in app.diagrams.net).
+
 Docs: [scale design](docs/scale.md), [security review](docs/security-review.md).
 
 ## How it works
